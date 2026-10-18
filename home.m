@@ -57,6 +57,17 @@ for i = 1:numel(x_dense)
 end
 p_rat_theory_sub = (1 + (gamma - 1) / 2 .* M_theory_sub.^2).^(-gamma / (gamma - 1));
 p_rat_theory_sup = (1 + (gamma - 1) / 2 .* M_theory_sup.^2).^(-gamma / (gamma - 1));
+p0_reservoir = mean([sub.p0]);
+p_theory_sub = p_rat_theory_sub * p0_reservoir;
+p_theory_sup = p_rat_theory_sup * p0_reservoir;
+p0_pitot_theory_sub = repmat(p0_reservoir, size(x_dense));
+M = M_theory_sup;
+rayleigh_num = (((gamma + 1) / 2) .* M.^2).^(gamma / (gamma - 1));
+rayleigh_den = ((2 * gamma .* M.^2 - (gamma - 1)) ./ ...
+    (gamma + 1)).^(1 / (gamma - 1));
+rayleigh_ratio = rayleigh_num ./ rayleigh_den;
+p0_pitot_theory_sup = p_theory_sup .* rayleigh_ratio;
+p0_pitot_theory_sup(x_dense < x_throat) = p0_reservoir;
 
 %% Plot pressure ratio and Mach number
 set(groot, 'defaultAxesFontName', 'Times New Roman', ...
@@ -78,7 +89,7 @@ plot(x_dense, theory_sup_patm, 'r-', 'LineWidth', 1.5, ...
 plot(x_dense, theory_sub_patm, 'b--', 'LineWidth', 1.3, ...
     'DisplayName', 'Theory: Subsonic');
 sup_colors = lines(max(numel(sup), numel(sub)));
-selected_ports = [3, 5, 7];
+selected_ports = [3, 4, 5, 7];
 for k = selected_ports
     errorbar(x_taps(static_plot_taps), ...
         sup(k).p_static(static_plot_taps) / p_atm, ...
@@ -126,17 +137,22 @@ title('(b) Mach Number Distribution'); grid on; box on;
 xlim([20 310]); ylim([0 1.6]); legend('Location', 'eastoutside', 'FontSize', 7);
 
 axes('Parent', stagnation_tab);
+plot(x_dense, p0_pitot_theory_sup / p_atm, 'r--', 'LineWidth', 1.4, ...
+    'DisplayName', 'Theory: Post-Shock Pitot p_{0,2} (Supersonic)');
+hold on;
+plot(x_dense, p0_pitot_theory_sub / p_atm, 'b:', 'LineWidth', 1.4, ...
+    'DisplayName', 'Theory: Isentropic Reservoir p_{0,1}');
 errorbar(x_pitot, [sup.p0] / p_atm, [sup.u_p0] / p_atm, '-s', ...
     'Color', [0.85 0.1 0.1], ...
     'MarkerFaceColor', [0.85 0.1 0.1], 'LineWidth', 1.1, ...
-    'DisplayName', 'Supersonic');
-hold on;
+    'DisplayName', 'Measured Supersonic Pitot p_{0,2}');
 errorbar(x_pitot, [sub.p0] / p_atm, [sub.u_p0] / p_atm, '-o', ...
     'Color', [0.1 0.3 0.8], ...
     'MarkerFaceColor', [0.1 0.3 0.8], 'LineWidth', 1.1, ...
-    'DisplayName', 'Subsonic');
+    'DisplayName', 'Measured Subsonic Pitot p_{0,1}');
+xline(x_throat, 'k:', 'LineWidth', 1.2, 'DisplayName', 'Throat');
 xlabel('Pitot axial position, x [mm]');
-ylabel('Normalized stagnation pressure, p_0 / p_{atm}');
+ylabel('Normalized Pitot stagnation pressure, p_{0,\mathrm{Pitot}} / p_{atm}');
 title('Stagnation Pressure Distribution');
 grid on; box on;
 xlim([min(x_pitot) - 5, max(x_pitot) + 5]);
