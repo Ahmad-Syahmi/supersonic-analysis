@@ -212,7 +212,7 @@ fid = fopen(file_path, 'r');
 if fid == -1
     error('Could not open file: %s', file_path);
 end
-cleanup = onCleanup(@() fclose(fid)); %#ok<NASGU>
+cleanup = onCleanup(@() fclose(fid));
 line = fgetl(fid);
 while ischar(line)
     if startsWith(strtrim(line), 'Time')

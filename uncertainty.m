@@ -2,12 +2,12 @@ clear; clc;
 
 data_dir = fileparts(mfilename('fullpath'));
 gamma = 1.4;
-K_gain = 1.7838e4;             % Pa/V
-p_atm = 101325;                % Pa
-u_p_atm = 150;                 % Pa
+K_gain = 1.7838e4;
+p_atm = 101325;
+u_p_atm = 150;
 
 x_taps = [24.7, 36.6, 48.3, 61.0, 73.7, 86.4, 99.1, 118.0, ...
-    209.5, 300.1];             % mm, physical taps 1-10
+    209.5, 300.1];
 channel_map = [1, 2, 3, 5, 4, 6, 7, 8, 9, 11, 10, 12];
 [~, sort_order] = sort(channel_map);
 
@@ -25,7 +25,7 @@ for regime = regimes
     offset_data = [];
     for k = 1:numel(offset_files)
         offset_data = [offset_data; load_dat_file(fullfile( ...
-            data_dir, offset_files(k).name))]; %#ok<AGROW>
+            data_dir, offset_files(k).name))];
     end
     if isempty(offset_data)
         error('No valid offset data found for %s.', regime);
@@ -51,8 +51,6 @@ for regime = regimes
         p_sd = voltage_sd * K_gain;
         p_sem = voltage_sem * K_gain;
 
-        % Reorder DAQ channels into physical tap order. Channel 12 is the
-        % stagnation-pressure reference for this same file.
         p_gauge = p_gauge(sort_order);
         p_sd = p_sd(sort_order);
         p_sem = p_sem(sort_order);
@@ -76,8 +74,7 @@ for regime = regimes
         u_ratio_sem = p_ratio .* hypot(u_p_sem ./ p_abs, u_p0_sem / p0);
 
         if regime == "supersonic"
-            % The Pitot pressure is only physically paired with the static
-            % tap at this file's parsed Pitot-port location.
+
             mach = NaN(12, 1);
             u_mach_sd = NaN(12, 1);
             u_mach_sem = NaN(12, 1);
@@ -115,7 +112,7 @@ for regime = regimes
             'AbsolutePressureU_SEM_Pa', 'PressureRatio', ...
             'PressureRatioU_SD', 'PressureRatioU_SEM', 'Mach', ...
             'MachU_SD', 'MachU_SEM', 'MachMethod'});
-        output = [output; rows]; %#ok<AGROW>
+        output = [output; rows];
     end
 end
 
@@ -128,7 +125,7 @@ fid = fopen(file_path, 'r');
 if fid == -1
     error('Could not open file: %s', file_path);
 end
-cleanup = onCleanup(@() fclose(fid)); %#ok<NASGU>
+cleanup = onCleanup(@() fclose(fid));
 
 line = fgetl(fid);
 while ischar(line)
