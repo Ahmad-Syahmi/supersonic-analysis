@@ -8,9 +8,9 @@ x_throat = 36.6;
 gamma = 1.4;
 channel_map = [1, 2, 3, 5, 4, 6, 7, 8, 9, 11, 10, 12];
 [~, sort_order] = sort(channel_map);
-K_gain = 1.7838e4; % Pa/V
-p_atm = 101325;    % Pa
-u_p_atm = 150;     % Pa
+K_gain = 1.7838e4;
+p_atm = 101325;
+u_p_atm = 150;
 
 data_dir = fileparts(mfilename('fullpath'));
 sup_files = dir(fullfile(data_dir, 'supersonic_*_data_*.dat'));
