@@ -3,8 +3,10 @@ clear; clc;
 data_dir = fileparts(mfilename('fullpath'));
 gamma = 1.4;
 K_gain = 1.7838e4;
+u_K_gain = 0.5;                % Pa/V, from +/-0.00005e4 Pa/V
 p_atm = 101325;
 u_p_atm = 150;
+transducer_accuracy = 0.0025;  % fraction of measured pressure magnitude
 
 x_taps = [24.7, 36.6, 48.3, 61.0, 73.7, 86.4, 99.1, 118.0, ...
     209.5, 300.1];
@@ -31,6 +33,19 @@ for regime = regimes
         error('No valid offset data found for %s.', regime);
     end
     offset_mean = mean(offset_data(:, 2:end), 1);
+    offset_sample_interval = median(diff(offset_data(:, 1)));
+    if ~isfinite(offset_sample_interval) || offset_sample_interval <= 0
+        error('Invalid time spacing in the %s offset data.', regime);
+    end
+    offset_u_voltage = zeros(1, 12);
+    for channel = 1:12
+        [~, offset_n_independent] = calculate_integral_time_scale( ...
+            offset_data(:, channel + 1), offset_sample_interval);
+        offset_u_voltage(channel) = std(offset_data(:, channel + 1), 0) / ...
+            sqrt(offset_n_independent);
+    end
+    offset_u_pressure = K_gain * offset_u_voltage;
+    offset_u_pressure = offset_u_pressure(sort_order);
 
     for k = 1:numel(data_files)
         file_name = data_files(k).name;
@@ -46,21 +61,43 @@ for regime = regimes
         voltage_mean = mean(samples, 1);
         voltage_sd = std(samples, 0, 1);
         voltage_sem = voltage_sd / sqrt(n_samples);
+        time = raw(:, 1);
+        sample_interval = median(diff(time));
+        if ~isfinite(sample_interval) || sample_interval <= 0
+            error('Invalid time spacing in %s.', file_name);
+        end
 
         p_gauge = (voltage_mean - offset_mean) * K_gain;
         p_sd = voltage_sd * K_gain;
         p_sem = voltage_sem * K_gain;
+        p_gain_u = abs(voltage_mean - offset_mean) * u_K_gain;
 
         p_gauge = p_gauge(sort_order);
         p_sd = p_sd(sort_order);
         p_sem = p_sem(sort_order);
+        p_gain_u = p_gain_u(sort_order);
 
         p_abs = p_atm + p_gauge;
         if any(p_abs <= 0)
             error('Non-positive absolute pressure in %s.', file_name);
         end
-        u_p_sd = hypot(p_sd, u_p_atm);
-        u_p_sem = hypot(p_sem, u_p_atm);
+        u_p_sd = hypot(p_sd, hypot(offset_u_pressure, u_p_atm));
+        u_p_sem = hypot(p_sem, hypot(offset_u_pressure, u_p_atm));
+        p_accuracy_u = transducer_accuracy * abs(p_gauge);
+        p_precision_95 = zeros(1, 12);
+        n_independent = zeros(1, 12);
+        integral_time_scale = zeros(1, 12);
+        for channel = 1:12
+            [integral_time_scale(channel), n_independent(channel)] = ...
+                calculate_integral_time_scale( ...
+                samples(:, sort_order(channel)), sample_interval);
+            p_precision_95(channel) = 1.96 * p_sd(channel) / ...
+                sqrt(n_independent(channel));
+        end
+        u_accuracy_precision_95 = hypot(p_accuracy_u, p_precision_95);
+        u_p_combined_95 = hypot( ...
+            u_accuracy_precision_95, ...
+            hypot(p_gain_u, hypot(1.96 * offset_u_pressure, u_p_atm)));
 
         p0 = p_abs(12);
         u_p0_sd = u_p_sd(12);
@@ -78,7 +115,7 @@ for regime = regimes
             mach = NaN(12, 1);
             u_mach_sd = NaN(12, 1);
             u_mach_sem = NaN(12, 1);
-            local_tap_index = port_number + 1;
+            local_tap_index = port_number;
             [mach(local_tap_index), mach_method] = calc_mach_rayleigh_pitot( ...
                 p_abs(local_tap_index), p0, gamma);
             u_mach_sd(local_tap_index) = calc_mach_rayleigh_uncertainty( ...
@@ -104,14 +141,23 @@ for regime = regimes
             repmat(n_samples, 12, 1), repmat(port_number, 12, 1), ...
             tap_number, x_position, ...
             p_gauge', p_sd', p_sem', p_abs', u_p_sd', u_p_sem', ...
+            offset_u_pressure', ...
+            integral_time_scale', n_independent', p_precision_95', ...
+            p_accuracy_u', p_gain_u', u_accuracy_precision_95', ...
+            u_p_combined_95', ...
             p_ratio', u_ratio_sd', u_ratio_sem', mach', ...
             u_mach_sd', u_mach_sem', repmat(mach_method, 12, 1), ...
             'VariableNames', {'Regime', 'DataFile', 'Samples', 'Port', 'Tap', ...
             'X_mm', 'GaugePressure_Pa', 'PressureSD_Pa', 'PressureSEM_Pa', ...
             'AbsolutePressure_Pa', 'AbsolutePressureU_SD_Pa', ...
-            'AbsolutePressureU_SEM_Pa', 'PressureRatio', ...
-            'PressureRatioU_SD', 'PressureRatioU_SEM', 'Mach', ...
-            'MachU_SD', 'MachU_SEM', 'MachMethod'});
+            'AbsolutePressureU_SEM_Pa', ...
+            'OffsetMeanU_Pa', ...
+            'IntegralTimeScale_s', 'N_independent', 'Precision95_Pa', ...
+            'TransducerAccuracy_Pa', 'GainUncertainty_Pa', ...
+            'AccuracyPlusPrecisionU95_Pa', 'CombinedU95_Pa', ...
+            'PressureRatio', 'PressureRatioU_SD', ...
+            'PressureRatioU_SEM', ...
+            'Mach', 'MachU_SD', 'MachU_SEM', 'MachMethod'});
         output = [output; rows];
     end
 end
@@ -229,4 +275,37 @@ if isempty(token)
     error('Could not extract a port number from filename: %s', file_name);
 end
 port_number = str2double(token{1});
+end
+
+function [integral_time_scale, n_independent] = ...
+    calculate_integral_time_scale(signal, sample_interval)
+signal = signal - mean(signal);
+n_samples = numel(signal);
+variance = sum(signal.^2);
+if variance == 0 || n_samples < 2
+    integral_time_scale = 0;
+    n_independent = n_samples;
+    return;
+end
+
+% Normalized autocorrelation for non-negative lags. The integral ends at
+% the first non-positive correlation, which avoids integrating noise-driven
+% negative lobes at long lags.
+autocorrelation = zeros(n_samples, 1);
+for lag = 0:n_samples - 1
+    autocorrelation(lag + 1) = ...
+        sum(signal(1:n_samples - lag) .* signal(1 + lag:n_samples)) / ...
+        variance;
+end
+first_nonpositive = find(autocorrelation(2:end) <= 0, 1, 'first') + 1;
+if isempty(first_nonpositive)
+    last_lag = n_samples;
+else
+    last_lag = first_nonpositive;
+end
+lags = (0:last_lag - 1)' * sample_interval;
+integral_time_scale = trapz(lags, autocorrelation(1:last_lag));
+integral_time_scale = max(0, integral_time_scale);
+n_independent = max(1, floor(n_samples * sample_interval / ...
+    max(2 * integral_time_scale, sample_interval)));
 end
